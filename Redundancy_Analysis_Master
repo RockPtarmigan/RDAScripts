@@ -1,0 +1,338 @@
+#Start by loading libraries
+#
+
+setwd("C:/ForR")
+library(vegan)
+
+
+#ONE TIME LOADS START HERE
+#Load environmental data to run for all chromosome pairs
+#Establish the latitude parameter
+#Remove unused predictors according to earlier collinnearity tests
+#Load chromosome name information
+#Set loop parameter to zero along with other start parameters
+#Set total number of counted candidate SNPs to zero
+#
+
+mutadata <- read.csv(file = "FullMutaData.csv")
+lat <- mutadata[2]
+mutadata <- mutadata[-c(1,2,5,6,9,12)]
+names <- read.csv('ChromosomeList.csv')
+nmax <- nrow(names)
+n <- 0
+tcand <- 0
+predrun <- 0
+dupt <- 0
+
+#this set of one time loading is for fancy plot development ((CHECK TO SEE IF THE ECOS CAN BE PULLED FROM OR ADDED TO THE LOADED DATA))
+#
+
+mutaecos <- read.csv(file = "muta_indv.csv")
+levels(mutaecos$eco) <- c("F.Alps","E.Greenland","Iceland","W.Greenland","Jamtland","F.Pyrenees","Svalbard")
+eco <- mutaecos$eco
+bg <- c("#ff7f00","#1f78b4","#ffff33","#a6cee3","#33a02c","#e31a1c","#7fffd4")
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~R LOOP STARTS HERE~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#Begin looping through the chromosome SNPs and running RDA in line with the names list 
+#
+
+repeat 
+{ 
+n <- n+1
+
+#Create a results directory for the RDA based on the chromosome name pulled from the ChromosomeList.csv
+#Create file pathways for writing out RDA results
+#CHECK THIS CODE TO MAKE SURE EACH REPEAT RETURNS TO PARENT FOLDER!!!
+
+
+name <- names[n,]
+newpath <- paste("./", name, "results", sep="")
+dir.create(newpath)
+sumpath <- paste(name, "summary.txt", sep="")
+
+# CORRECT THE FILE PATH HERE
+# Pull in appropriate SNP file and then read the length to define appropriate test parameters later.
+# a newsnp list is calculated based on the length of the snp file and excluding the first 6 identifiers.  
+#
+
+mutasnp <- read.table(file = "mutapruned.raw")
+newsnp <- mutasnp[7:dim(mutasnp)[2]]
+
+#CREATE CONDITIONS FOR MISSING DATA?
+#I'm expecting this should be pre-arranged and that each SNP file should have no missing calls
+#If this isn't the case an untested fix should be:
+#if (is.na(mutasnp)) {
+# gen.imp <- apply(mutasnp, 2, function(x) replace(x, is.na(x), as.numeric(names(which.max(table(x))))))
+# }
+#
+
+#Run the RDA dependent on the length of the individual SNP file, skipping the first 6 characters which should just be identifiers. This process is condensed via the earlier defining of 'newsnp'.
+#
+ 
+muta.rda <- rda(newsnp ~ ., data=mutadata, x=lat, scale=T)
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~DATA HAS NOW BEEN RUN~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~ANALYSIS OF RDA HERE~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#Run the Significance test and the expanded intensive significance by axis test.
+#REMEMBER not to run the axis test if you are testing this script, it is very intensive and will crash without adequate cores
+#
+
+signif.full <- anova.cca(muta.rda, parallel=getOption("mc.cores")) 
+signif.axis <- anova.cca(muta.rda, by="axis", parallel=getOption("mc.cores"))
+
+
+#DESCEND INTO THE NEW DIRECTORY FOR THIS CHROMOSOME
+#
+setwd(newpath)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~PLOT DEVELOPMENT HERE~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+#These lines command R to develop three summary plots in a pdf file showing the placement of SNPs for each population, based on various ordinations 
+
+#Basic ordination for fancy plot (first comparing RDA1 to RDA2 then progressing as scripted)
+#
+
+pdf("OrdinationPlots.pdf")
+
+plot(muta.rda, type="n", scaling=3)
+points(muta.rda, display="species", pch=20, cex=0.7, col="gray32", scaling=3)           
+points(muta.rda, display="sites", pch=21, cex=1.3, col="gray32", scaling=3, bg=bg[eco]) 
+text(muta.rda, scaling=3, display="bp", col="#0868ac", cex=1)                           
+legend("bottomright", legend=levels(eco), bty="n", col="gray32", pch=21, cex=1, pt.bg=bg)
+
+plot(muta.rda, type="n", scaling=3, choices=c(2,3))
+points(muta.rda, display="species", pch=20, cex=0.7, col="gray32", scaling=3, choices=c(2,3))
+points(muta.rda, display="sites", pch=21, cex=1.3, col="gray32", scaling=3, bg=bg[eco], choices=c(2,3))
+text(muta.rda, scaling=3, display="bp", col="#0868ac", cex=1, choices=c(2,3))
+legend("topleft", legend=levels(eco), bty="n", col="gray32", pch=21, cex=1, pt.bg=bg)
+
+plot(muta.rda, type="n", scaling=3, choices=c(1,3))
+points(muta.rda, display="species", pch=20, cex=0.7, col="gray32", scaling=3, choices=c(1,3))
+points(muta.rda, display="sites", pch=21, cex=1.3, col="gray32", scaling=3, bg=bg[eco], choices=c(1,3))
+text(muta.rda, scaling=3, display="bp", col="#0868ac", cex=1, choices=c(1,3))
+legend("topleft", legend=levels(eco), bty="n", col="gray32", pch=21, cex=1, pt.bg=bg)
+
+dev.off()
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~CANDIDATE SNP IDENTIFICATION~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~STARTS HERE~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#We will start by also adding loading histograms for each ordination to the results folder
+# 
+
+load.rda <- scores(muta.rda, choices=c(1:3), display="species")
+
+pdf("Loadings.pdf")
+
+hist(load.rda[,1], main="Loadings on RDA1")
+hist(load.rda[,2], main="Loadings on RDA2")
+hist(load.rda[,3], main="Loadings on RDA3")  
+
+dev.off()
+
+#Now we're building a function to target the outlier snps loading in the tails of each calculated RDA distribution
+#
+
+outliers <- function(x,z){
+  lims <- mean(x) + c(-1, 1) * z * sd(x)     # find loadings +/-z sd from mean loading     
+  x[x < lims[1] | x > lims[2]]               # locus names in these tails
+}
+
+cand1 <- outliers(load.rda[,1],3) 
+cand2 <- outliers(load.rda[,2],3) 
+cand3 <- outliers(load.rda[,3],3)
+
+ncand <- length(cand1) + length(cand2) + length(cand3)
+
+
+#here we update the runnin tally of candidate snps identified across the script
+#
+
+tcand <- tcand+ncand
+
+
+#Next, we’ll organize our results by making one data frame with the axis, SNP name, loading, & correlation with each predictor:
+#
+
+cand1 <- cbind.data.frame(rep(1,times=length(cand1)), names(cand1), unname(cand1))
+cand2 <- cbind.data.frame(rep(2,times=length(cand2)), names(cand2), unname(cand2))
+cand3 <- cbind.data.frame(rep(3,times=length(cand3)), names(cand3), unname(cand3))
+
+colnames(cand1) <- colnames(cand2) <- colnames(cand3) <- c("axis","snp","loading")
+
+cand <- rbind(cand1, cand2, cand3)
+cand$snp <- as.character(cand$snp)
+
+
+# Add in correlations of each candidate SNP with correlation to the remaining environmental variables
+# IMPORTANT NOTE: Bugs will occur in the following lines if the number of parameters subset from the original environmental dataset is incorrect or doesn't match the evaluated parameters.  
+# Be sure to set the final script to match the correct number of RDA variables and colnames for each run. 
+#
+
+foo <- matrix(nrow=(ncand), ncol=7)  # 7 columns for 7 predictors
+colnames(foo) <- c("MDR","Isot","TWet","TDry","PVar","PWrm","Elev")
+
+for (i in 1:length(cand$snp)) {
+  nam <- cand[i,2]
+  snp.gen <- mutasnp[,nam]
+  foo[i,] <- apply(mutadata,2,function(x) cor(x,snp.gen))
+}
+
+cand <- cbind.data.frame(cand,foo)
+
+
+#Variable 'cand' should now include a data frame with all candidate snps and their correlation to each variable of interest. 
+#Here we make a note of any duplicates detected and remove them 
+
+duprm <- length(cand$snp[duplicated(cand$snp)])
+dupt <- dupt+length(cand$snp[duplicated(cand$snp)])
+cand <- cand[!duplicated(cand$snp),]
+
+ 
+#Correlate SNPs to Predictors, then save predictor statistics for later writeout
+#
+
+for (i in 1:length(cand$snp)) {
+  bar <- cand[i,]
+  cand[i,11] <- names(which.max(abs(bar[4:10]))) # gives the variable
+  cand[i,12] <- max(abs(bar[4:10]))              # gives the correlation
+}
+
+colnames(cand)[11] <- "predictor"
+colnames(cand)[12] <- "correlation"
+
+predictors <- table(cand$predictor) 
+predrun <- predrun+predictors
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~FANCY PLOT DEVELOPMENT HERE~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#Take the separated SNP information and apply to a final plot for writeout 
+#
+
+png("FINALPLOT1.png")
+plot(muta.rda, type="n", scaling=3) 
+points(muta.rda, display="species", pch=20, cex=0.7, col="gray32", scaling=3)
+points(muta.rda, display="sites", cex=1.3, scaling=3, col = bg[as.numeric(eco)],pch =21)
+text(muta.rda, scaling=3, display="bp", col="#0868ac", cex=1)
+legend("bottomright", legend=levels(eco), bty="n", col="#a0a0a0", pch=21, cex=1, pt.bg=bg)
+dev.off()
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~FINISHING UP~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+#Final Summary printed to chromosome directory here:
+#This will print and save a text summary of all important test results 
+# 
+
+sink(sumpath)
+
+print("###############################") 
+print("###############################")
+paste(name, "RDA Summary:")
+print("###############################")
+print("###############################")
+muta.rda
+
+print("Adjusted R Square:")
+RsquareAdj(muta.rda)
+
+print("Axis Values")
+summary(eigenvals(muta.rda, model = "constrained"))
+
+print("Test that there is no linear relationship between the SNP data and the environmental predictors:")
+signif.full
+
+print("Signifigance test by axis:")
+signif.axis
+
+print("Variance inflation factors test for multicollinearity:")
+vif.cca(muta.rda)
+
+paste(name, " Candidate SNP Summary:")
+
+print("Number of Duplicate SNPs Removed:")
+duprm
+
+print("Total remaining candidate SNPS")
+length(cand$snp)
+
+print("Best predictor of SNPs on this Chromosome:")
+predictors
+
+sink()
+
+#REMOVE all large temp variables to prevent R from getting crowded during the run
+#
+
+rm(mutasnp)
+rm(muta.rda)
+rm(load.rda)
+rm(foo)
+
+
+#RETURN TO THE PARENT DIRECTORY
+#
+
+setwd("../")
+
+
+#Full Run Summary Statistics Compiled
+#Create code section here that saves and prints a text file summarizing the snps collected 
+#
+
+
+
+
+#Break the loop when all chromosomes have been run
+#
+ 
+   if( n=nmax ) 
+   {
+      break
+   }
+}
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~LOOP FINISHED HERE~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#Write document displaying descriptive statistics across the run
+#
+
+sink("RunDoneSummary.txt")
+
+print("Number of Chromosomes Reviewed:")
+n
+
+print("Number of duplicate SNPs Detected and Removed:")
+dupt
+
+print("Number of SNPs by best predictors across the run:")
+predrun
+
+print("Total Candidate SNPs Collected:")
+tcand
+sink()
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~EXIT THE R SCRIPT~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+q()
+n
