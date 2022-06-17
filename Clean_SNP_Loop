@@ -1,0 +1,17 @@
+#This is a SNP cleaning file
+#I will need to use the r Library (tidyr)
+library("tidyr") 
+
+#We will need to define loop parameters with a increasing loop number
+loon <- 0 
+loopm <- ncol(#SNPFILE) 
+sum(is.na(#SNPFILE))
+
+
+repeat {
+loon <- loon+1
+#SNPFILE[,loon] <- replace_na(#SNPFILE[,loon], names(which.max(table(#SNPFILE[,loon]))))
+if(loon = loopm) {
+      break
+   }
+}
