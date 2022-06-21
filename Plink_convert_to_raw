@@ -1,0 +1,16 @@
+#This bash script will use version 1.9 of the PLINK program to take the VCF snp files and turn them into .raw files for reading into the redundancy analysis pipeline.
+#Most useful information related to this methodology is going to be found here: https://www.cog-genomics.org/plink/1.9/formats#raw
+#
+
+
+#An output directory for the results (our .raw file outputs) will need to be developed 
+#Pull location:
+#Push location:
+
+mkdir 
+
+#The location of the VCF files on the rackham server is where the read section will go, so that will need to be defined - Or we can just manually detail each conversion
+#into the new directory
+#
+
+plink --vcf file.vcf --chr-set 164 --recodeA --out file
