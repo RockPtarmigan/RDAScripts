@@ -2,16 +2,30 @@
 #I will need to use the r Library (tidyr)
 library("tidyr") 
 
-#We will need to define loop parameters with a increasing loop number
+#We will need to define loop parameters with an increasing loop number
+#
+
 loon <- 0 
 loopm <- ncol(#SNPFILE) 
-sum(is.na(#SNPFILE))
 
+#Also we will include a sum of the SNPs to both output and add in reports at the start of the master script the tna (total NAs) should be set to zero. 
+#
+
+nareport <- sum(is.na(#SNPFILE))
+tna <- tna+nareport
+
+#loop starts here, going column by column through the files, to fix NA values to the most common vector
+#depending on the data mode of the SNP file vectors, you may need to add an as.numeric line to stop the table from being coerced into characters
+#
 
 repeat {
 loon <- loon+1
 #SNPFILE[,loon] <- replace_na(#SNPFILE[,loon], names(which.max(table(#SNPFILE[,loon]))))
-if(loon = loopm) {
+if(loon==loopm) {
       break
    }
 }
+
+#As the SNP cleaning runs, in columns where the number of most common vectors are tied, the lowest common vector will be chosen
+#For example, in tests where 1, 1, 1, 2, 2, 2, 0, 0, 0 and any number of NAs are present, the value zero will be selected to replace NAs regardless of arrangement of values. 
+# 
