@@ -1,0 +1,42 @@
+#README In this section we will be attempting to append climate data onto our main data frame
+#WorldClim has been identified as the best resource for pulling down this data. 
+#
+#First set the working directory and load the libraries
+#
+
+setwd("C:/ForR")
+library(sp)
+library(raster)
+
+# Pull in the csv file coordinates to work from
+#
+
+mutacoords <- read.csv(file = "muta_coords.csv")
+head(mutacoords)
+
+#convert just the coordinates to a spatial points data frame, ((we're passing coords as a standin to identify xy in the coord = argument)). 
+#
+
+crds <- mutacoords[c("Long","Lat")]
+spdf <- SpatialPointsDataFrame(coords = crds, data = crds, proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
+
+#The source information for the data will be stored in variable r, note we've established a resolution of 10 here ((*****FIND OUT WHAT THIS MEANS*****))
+#
+
+r <- getData("worldclim",var="bio",res=10)
+
+#19 different options are available but we're going to take mean annual temperature and precipitation [1 and 12 respectively] to pull ((List of options here: https://www.worldclim.org/data/bioclim.html))
+#
+
+r <- r[[c(1, 6, 12, 19)]]
+names(r) <- c("Temp","LowT","Prec","Snow")
+
+#Execute to pull data into a combined dataframe
+#
+
+values <- extract(r,spdf)
+df <- cbind.data.frame(coordinates(spdf),values)
+head(df)
+
+#Note that temperature data is *10 of actual value in celcius for data transfer efficiency (removing decimal points is much easier.) so df["Temp"] <- df["Temp"]*0.1 will show the accurate value
+#This will need to be repeated for any temperature variable used if you choose to correct it.
