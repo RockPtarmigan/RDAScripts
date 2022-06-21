@@ -1,0 +1,60 @@
+#README 
+#Here we will try to append geographical data to the coordinates in the muta CSV file. 
+#These tools were helpful for development:
+#https://cran.r-project.org/web/packages/elevatr/vignettes/introduction_to_elevatr.html 
+#https://stackoverflow.com/questions/8973695/conversion-for-latitude-longitude-to-altitude-in-r
+#https://www.geeksforgeeks.org/goto-statement-in-r-programming/
+
+#Load the libraries and set the directory, note that in order to query GEONAMES you need a geonames account with the Free Web Services set to ENABLED.
+#
+
+library(raster)
+library(elevatr)
+
+setwd("C:/ForR")
+options(geonamesUsername="theosquires")
+library(geonames)
+
+#Here we load the data, set the loop numbers to zero, calculate the run numbers necessary to break based on file rows, and create an empty dataframe to bind the elevation data to
+#
+
+data <- read.csv("C:/ForR/muta_coords.csv")
+nrun <- 0
+runs <- nrow(data)
+old <- data.frame()
+
+
+#Loop to pull and store elevation data for each coordinate starts here
+#
+
+repeat { 
+   
+nrun <- nrun+1
+
+lng <- data[nrun, "Long"] 
+lat <- data[nrun, "Lat"]
+
+new <- GNsrtm3(lat, lng)
+
+old <- rbind (old, new)
+ 
+   if(nrun==runs) {
+      break
+   }
+}
+
+#Loop exited now appending the pulled elevation data to the old data frame for export
+#
+
+new_elevations <- old["srtm3"]
+colnames(new_elevations) <- c("Elevation (m)")
+Data_with_elevations <- cbind(data, new_elevations)
+
+#Now some subset of the data failed to pull, geonames changes all NAs to -32768, so we should change those values back to NA for next analysis.
+#
+
+Data_with_elevations["Elevation (m)"] <- replace(Data_with_elevations["Elevation (m)"],Data_with_elevations["Elevation (m)"]==-32768, NA)
+
+#Export
+#
+write.csv(Data_with_elevations,"C:/ForR/Data_with_elevations.csv", row.names = TRUE)
